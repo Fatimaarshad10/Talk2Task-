@@ -228,7 +228,7 @@ export default function GoogleCalendarConnect() {
                             </>
                         ) : (
                             <>
-                                <ExternalLink className="w-4 h-4" />
+                                {/* <ExternalLink className="w-4 h-4" /> */}
                                 Connect Google Calendar
                             </>
                         )}
