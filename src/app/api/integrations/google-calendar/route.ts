@@ -6,7 +6,7 @@ async function handleOAuthCodeExchange(code: string, userId: string) {
   try {
     const clientId = process.env.CLIENT_ID
     const clientSecret = process.env.CLIENT_SECRET
-    const redirectUri = `http://localhost:3000/auth/callback`
+    const redirectUri = `https://talk2-task-hztu.vercel.app/auth/callback`
 
     if (!clientId || !clientSecret) {
       return NextResponse.json(
