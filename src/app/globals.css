@@ -1,0 +1,52 @@
+/* Tailwind v4: one-line import */
+@import "tailwindcss";
+
+/* Make dark mode work with a .dark class on <html> or <body> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* === Design tokens (v4 @theme) ===
+   Neutral, professional palette with a subtle gold accent.
+   This creates utilities like bg-background, text-foreground, border-border, bg-accent, etc.
+*/
+@theme {
+  /* Fonts */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, "Segoe UI",
+               Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji",
+               "Segoe UI Emoji", "Segoe UI Symbol";
+
+  /* Light theme (default) */
+  --color-background: #ffffff;      /* page background */
+  --color-surface:    #f7f7f9;      /* cards, panels */
+  --color-foreground: #0f172a;      /* primary text (near-black/ink) */
+  --color-muted:      #475569;      /* secondary text */
+  --color-border:     #e5e7eb;      /* subtle borders/dividers */
+  --color-accent:     #d4af37;      /* soft gold accent */
+  --color-accent-foreground: #0f172a; /* text/icon on accent backgrounds */
+}
+
+/* Optional: prefer system light by default */
+:root { color-scheme: light; }
+
+/* Dark mode overrides (just override the tokens) */
+.dark {
+  color-scheme: dark;
+
+  --color-background: #0b1020;
+  --color-surface:    #111827;
+  --color-foreground: #f8fafc;
+  --color-muted:      #cbd5e1;
+  --color-border:     #1f2937;
+  --color-accent:     #e9c46a;        /* slightly brighter gold for contrast */
+  --color-accent-foreground: #0b1020;
+}
+
+/* Base element styles (optional) */
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
