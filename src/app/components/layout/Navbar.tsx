@@ -6,11 +6,15 @@ import { useAuth } from '@/app/contexts/AuthContext'
 import ThemeToggle from '@/app/components/theme/ThemeToggle'
 import { motion, AnimatePresence } from 'framer-motion'
 import { User, LogOut, Settings, ChevronDown, Loader2 } from 'lucide-react'
+import { useRouter } from 'next/navigation' // make sure this is imported
+
+
 
 
 export default function Navbar() {
   const { user, signOut, loading } = useAuth()
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const router = useRouter(); // inside your component
 
   // Helper function to get user initials from name or email
   const getUserInitials = (nameOrEmail: string) => {
@@ -33,10 +37,11 @@ export default function Navbar() {
 
   const handleSignOut = async () => {
     try {
-      await signOut()
+      await signOut() // Supabase sign out
       setShowUserMenu(false)
-    } catch {
-      console.error('Sign out error:')
+      router.push('/auth') // Redirect to /auth page
+    } catch (error) {
+      console.error('Sign out error:', error)
     }
   }
 
