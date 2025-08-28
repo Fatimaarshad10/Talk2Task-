@@ -9,7 +9,6 @@ import { z } from 'zod'
 import toast from 'react-hot-toast'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { useAuth } from '../contexts/AuthContext'
-import GoogleCalendarConnect from './GoogleCalendarConnect'
 
 const inputSchema = z.object({
     text: z.string().min(1, 'Please enter a task description')
@@ -38,55 +37,9 @@ export default function Talk2TaskInterface() {
     const [isLoading, setIsLoading] = useState(false)
     const mediaRecorderRef = useRef<MediaRecorder | null>(null)
     const audioChunksRef = useRef<Blob[]>([])
-
     const supabase = createClientComponentClient()
     const { user } = useAuth()
 
-    // Debug environment variables and Supabase connection
-    useEffect(() => {
-        console.log('=== ENVIRONMENT DEBUG ===')
-        console.log('NODE_ENV:', process.env.NODE_ENV)
-        console.log('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-        console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'NOT SET')
-        console.log('Supabase client:', supabase)
-        console.log('User:', user)
-        console.log('=== END ENVIRONMENT DEBUG ===')
-
-        // Test Supabase connection
-        if (user) {
-            testSupabaseConnection()
-        }
-    }, [supabase, user])
-
-    // Test Supabase connection
-    const testSupabaseConnection = async () => {
-        try {
-            console.log('Testing Supabase connection...')
-
-            // Test basic connection by checking auth
-            const { data: { session }, error: authError } = await supabase.auth.getSession()
-            if (authError) {
-                console.error('Auth connection error:', authError)
-            } else {
-                console.log('Auth connection successful, session:', session ? 'exists' : 'none')
-            }
-
-            // Test database connection by checking if we can query
-            const { error: testError } = await supabase
-                .from('tasks')
-                .select('count')
-                .limit(1)
-
-            if (testError) {
-                console.error('Database connection error:', testError)
-            } else {
-                console.log('Database connection successful')
-            }
-
-        } catch {
-            console.error('Connection test error:')
-        }
-    }
 
     const {
         register,
@@ -139,7 +92,7 @@ export default function Talk2TaskInterface() {
     // Load tasks on component mount
     useEffect(() => {
         if (user) {
-            fetchTasks()
+            // fetchTasks()
         }
     }, [user])
 
@@ -180,16 +133,8 @@ export default function Talk2TaskInterface() {
         setIsProcessing(true)
 
         try {
-            // Convert audio blob to base64 for API processing
             const arrayBuffer = await audioBlob.arrayBuffer()
-            // const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)))
-
-            // For now, we'll use a simple approach - in production, you'd integrate with:
-            // - Web Speech API (free, browser-based)
-            // - OpenAI Whisper API (paid, high quality)
-            // - Google Speech-to-Text API (paid, high quality)
-
-            // Using Web Speech API as a free alternative
+          
             if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
                 const recognition = new SpeechRecognition()
@@ -469,11 +414,6 @@ export default function Talk2TaskInterface() {
         )
     }
 
-    // Environment check for debugging
-    const isDevelopment = process.env.NODE_ENV === 'development'
-    const hasSupabaseUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL
-    const hasSupabaseKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
     return (
         <div className="max-w-4xl mx-auto space-y-8">
             {/* Header */}
@@ -490,18 +430,7 @@ export default function Talk2TaskInterface() {
                     Simply speak or type, and let AI handle the rest.
                 </p>
 
-                {/* Debug Info (Development Only) */}
-                {isDevelopment && (
-                    <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                        <h3 className="font-semibold mb-2">🔧 Debug Information</h3>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div>Supabase URL: {hasSupabaseUrl ? '✅ Set' : '❌ Missing'}</div>
-                            <div>Supabase Key: {hasSupabaseKey ? '✅ Set' : '❌ Missing'}</div>
-                            <div>User ID: {user?.id ? `✅ ${user.id.substring(0, 8)}...` : '❌ None'}</div>
-                            <div>User Email: {user?.email || '❌ None'}</div>
-                        </div>
-                    </div>
-                )}
+              
             </motion.div>
 
             {/* Input Interface */}
@@ -593,13 +522,7 @@ export default function Talk2TaskInterface() {
                         >
                             {showTasks ? 'Hide' : 'Show'} Tasks
                         </button>
-                        <button
-                            onClick={testSupabaseConnection}
-                            className="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
-                            title="Test Supabase connection"
-                        >
-                            Test Connection
-                        </button>
+                        
                     </div>
                 </div>
 
@@ -676,14 +599,7 @@ export default function Talk2TaskInterface() {
                 </AnimatePresence>
             </motion.div>
 
-            {/* Google Calendar Integration */}
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-            >
-                <GoogleCalendarConnect />
-            </motion.div>
+          
 
             {/* Features Preview */}
             <motion.div

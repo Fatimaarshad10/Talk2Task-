@@ -1,32 +1,6 @@
 export interface Database {
   public: {
     Tables: {
-      profiles: {
-        Row: {
-          id: string
-          email: string
-          full_name: string | null
-          avatar_url: string | null
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id: string
-          email: string
-          full_name?: string | null
-          avatar_url?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          email?: string
-          full_name?: string | null
-          avatar_url?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-      }
       tasks: {
         Row: {
           id: string
@@ -79,6 +53,7 @@ export interface Database {
           id: string
           user_id: string
           platform: 'google_calendar' | 'notion' | 'trello' | 'slack'
+          provider: string
           access_token: string
           refresh_token: string | null
           expires_at: string | null
@@ -89,7 +64,8 @@ export interface Database {
         Insert: {
           id?: string
           user_id: string
-          platform: 'google_calendar' | 'notion' | 'notion' | 'trello' | 'slack'
+          platform: 'google_calendar' | 'notion' | 'trello' | 'slack'
+          provider: string
           access_token: string
           refresh_token?: string | null
           expires_at?: string | null
@@ -101,6 +77,7 @@ export interface Database {
           id?: string
           user_id?: string
           platform?: 'google_calendar' | 'notion' | 'trello' | 'slack'
+          provider: string
           access_token?: string
           refresh_token?: string | null
           expires_at?: string | null
@@ -142,7 +119,7 @@ export interface Database {
   }
 }
 
-export type Profile = Database['public']['Tables']['profiles']['Row']
+// ✅ Types
 export type Task = Database['public']['Tables']['tasks']['Row']
 export type Integration = Database['public']['Tables']['integrations']['Row']
 export type AIConversation = Database['public']['Tables']['ai_conversations']['Row']

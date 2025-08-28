@@ -4,17 +4,13 @@ import { createServerSupabaseClient } from '@/app/lib/supabaseServer'
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient()
-
-    // Get user from auth context (you'll need to implement proper auth)
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-
     if (authError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
-
     const { data: tasks, error } = await supabase
       .from('tasks')
       .select('*')
@@ -39,16 +35,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient()
-
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-
     if (authError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
-
     const body = await request.json()
     const { title, description, priority, due_date, source, ai_context, external_platform } = body
 
