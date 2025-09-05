@@ -1,417 +1,398 @@
-'use client'
+"use client";
 
-import { useState, useRef, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Mic, MicOff, Send, Loader2, Calendar, CheckCircle, Clock, AlertCircle, Trash2 } from 'lucide-react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import toast from 'react-hot-toast'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { useAuth } from '../contexts/AuthContext'
+import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+    Mic,
+    MicOff,
+    Send,
+    Loader2,
+    Calendar,
+    CheckCircle,
+    Clock,
+    AlertCircle,
+    Trash2,
+} from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import toast from "react-hot-toast";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useAuth } from "../contexts/AuthContext";
 
 const inputSchema = z.object({
-    text: z.string().min(1, 'Please enter a task description')
-})
+    text: z.string().min(1, "Please enter a task description"),
+});
 
-type InputForm = z.infer<typeof inputSchema>
+type InputForm = z.infer<typeof inputSchema>;
 
 interface Task {
-    id: string
-    title: string
-    description: string | null
-    status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
-    priority: 'low' | 'medium' | 'high' | 'urgent'
-    due_date: string | null
-    source: 'voice' | 'text' | 'ai_generated'
-    created_at: string
-    external_id?: string
-    external_platform?: string
+    id: string;
+    title: string;
+    description: string | null;
+    status: "pending" | "in_progress" | "completed" | "cancelled";
+    priority: "low" | "medium" | "high" | "urgent";
+    due_date: string | null;
+    source: "voice" | "text" | "ai_generated";
+    created_at: string;
+    external_id?: string;
+    external_platform?: string;
 }
 
 export default function Talk2TaskInterface() {
-    const [isListening, setIsListening] = useState(false)
-    const [isProcessing, setIsProcessing] = useState(false)
-    const [tasks, setTasks] = useState<Task[]>([])
-    const [showTasks, setShowTasks] = useState(false)
-    const [isLoading, setIsLoading] = useState(false)
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-    const audioChunksRef = useRef<Blob[]>([])
-    const supabase = createClientComponentClient()
-    const { user } = useAuth()
-
+    const [isListening, setIsListening] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [tasks, setTasks] = useState<Task[]>([]);
+    const [showTasks, setShowTasks] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const supabase = createClientComponentClient();
+    const { user, session } = useAuth();
 
     const {
         register,
         handleSubmit,
         reset,
-        formState: { errors }
+        formState: { errors },
     } = useForm<InputForm>({
-        resolver: zodResolver(inputSchema)
-    })
+        resolver: zodResolver(inputSchema),
+    });
 
     // Fetch tasks from database
     const fetchTasks = async () => {
         if (!user) {
-            console.log("No user found, skipping task fetch")
-            return
+            console.log("No user found, skipping task fetch");
+            return;
         }
 
         try {
-            setIsLoading(true)
-            console.log("Fetching tasks for user:", user.id)
+            setIsLoading(true);
+            console.log("Fetching tasks for user:", user.id);
 
             const { data, error } = await supabase
                 .from("tasks")
                 .select("*")
                 .eq("user_id", user.id)
-                .order("created_at", { ascending: false })
+                .order("created_at", { ascending: false });
 
             if (error) {
-                console.error("Supabase error:", error)
-                throw error
+                console.error("Supabase error:", error);
+                throw error;
             }
 
             if (!data || data.length === 0) {
-                console.log("No tasks found for user:", user.id)
+                console.log("No tasks found for user:", user.id);
                 // 👇 don’t set tasks or show error, just return
-                return
+                return;
             }
 
-            console.log("Tasks fetched successfully:", data.length, "tasks")
-            setTasks(data)
+            console.log("Tasks fetched successfully:", data.length, "tasks");
+            setTasks(data);
         } catch {
-            console.error("Error fetching tasks:")
-            toast.error("Failed to fetch tasks")
+            console.error("Error fetching tasks:");
+            toast.error("Failed to fetch tasks");
         } finally {
-            setIsLoading(false)
+            setIsLoading(false);
         }
-    }
-
+    };
 
     // Load tasks on component mount
     useEffect(() => {
         if (user) {
-            // fetchTasks()
+            fetchTasks()
         }
-    }, [user])
-
-    const startListening = async () => {
+    }, [user]); const startListening = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-            const mediaRecorder = new MediaRecorder(stream)
-            mediaRecorderRef.current = mediaRecorder
-            audioChunksRef.current = []
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
 
             mediaRecorder.ondataavailable = (event) => {
-                audioChunksRef.current.push(event.data)
-            }
+                audioChunksRef.current.push(event.data);
+            };
 
             mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' })
-                await processVoiceInput(audioBlob)
-                stream.getTracks().forEach(track => track.stop())
-            }
+                const audioBlob = new Blob(audioChunksRef.current, {
+                    type: "audio/wav",
+                });
+                await processVoiceInput(audioBlob);
+                stream.getTracks().forEach((track) => track.stop());
+            };
 
-            mediaRecorder.start()
-            setIsListening(true)
-            toast.success('Listening... Speak now!')
+            mediaRecorder.start();
+            setIsListening(true);
+            toast.success("Listening... Speak now!");
         } catch {
-            toast.error('Microphone access denied')
-            console.error('Error accessing microphone:')
+            toast.error("Microphone access denied");
+            console.error("Error accessing microphone:");
         }
-    }
+    };
 
     const stopListening = () => {
         if (mediaRecorderRef.current && isListening) {
-            mediaRecorderRef.current.stop()
-            setIsListening(false)
+            mediaRecorderRef.current.stop();
+            setIsListening(false);
         }
-    }
+    };
 
     const processVoiceInput = async (audioBlob: Blob) => {
-        setIsProcessing(true)
+        setIsProcessing(true);
 
         try {
-            const arrayBuffer = await audioBlob.arrayBuffer()
-          
-            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-                const recognition = new SpeechRecognition()
+            const arrayBuffer = await audioBlob.arrayBuffer();
 
-                recognition.continuous = false
-                recognition.interimResults = false
-                recognition.lang = 'en-US'
+            if (
+                "webkitSpeechRecognition" in window ||
+                "SpeechRecognition" in window
+            ) {
+                const SpeechRecognition =
+                    window.SpeechRecognition || window.webkitSpeechRecognition;
+                const recognition = new SpeechRecognition();
+
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = "en-US";
 
                 recognition.onresult = async (event) => {
-                    const transcript = event.results[0][0].transcript
-                    console.log('Voice transcript:', transcript)
-                    await processTextInput(transcript)
-                }
+                    const transcript = event.results[0][0].transcript;
+                    console.log("Voice transcript:", transcript);
+                    await processAndSaveTask(transcript, 'voice');
+                };
 
                 recognition.onerror = (event) => {
-                    console.error('Speech recognition error:', event.error)
-                    toast.error('Voice recognition failed. Please try typing instead.')
-                    setIsProcessing(false)
-                }
+                    console.error("Speech recognition error:", event.error);
+                    toast.error("Voice recognition failed. Please try typing instead.");
+                    setIsProcessing(false);
+                };
 
                 recognition.onend = () => {
-                    setIsProcessing(false)
-                }
+                    setIsProcessing(false);
+                };
 
-                recognition.start()
+                recognition.start();
             } else {
                 // Fallback for browsers without speech recognition
-                toast('Voice recognition not supported in this browser. Please type your task.')
-                setIsProcessing(false)
+                toast(
+                    "Voice recognition not supported in this browser. Please type your task."
+                );
+                setIsProcessing(false);
             }
         } catch {
-            console.error('Voice processing error:')
-            toast.error('Voice processing failed. Please try typing instead.')
-            setIsProcessing(false)
+            console.error("Voice processing error:");
+            toast.error("Voice processing failed. Please try typing instead.");
+            setIsProcessing(false);
         }
-    }
+    };
 
-    const processTextInput = async (text: string) => {
+    const processAndSaveTask = async (text: string, source: 'voice' | 'text') => {
         if (!user) {
-            toast.error('Please sign in to create tasks')
-            return
+            toast.error('You must be logged in to create a task.');
+            return;
         }
-
         setIsProcessing(true)
+        const toastId = toast.loading('AI is processing your task...')
 
         try {
-            console.log('=== DEBUG: Starting task creation ===')
-            console.log('Processing text input:', text)
-            console.log('User ID:', user.id)
-            console.log('User object:', user)
-            console.log('Supabase client:', supabase)
-
-            // Test Supabase connection first
-            console.log('Testing Supabase connection...')
-            const { error: testError } = await supabase
-                .from('tasks')
-                .select('count')
-                .limit(1)
-
-            if (testError) {
-                console.error('❌ Supabase connection test failed:', testError)
-                throw new Error(`Database connection failed: ${testError.message}`)
-            } else {
-                console.log('✅ Supabase connection test successful')
-            }
-
-            // Process with AI to extract task details
-            console.log('Calling AI API...')
-            const aiResponse = await fetch('/api/ai/process', {
+            const response = await fetch('/api/ai/process', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, userId: user.id })
+                body: JSON.stringify({ text }),
             })
 
-            if (!aiResponse.ok) {
-                const errorText = await aiResponse.text()
-                console.error('❌ AI API error:', aiResponse.status, errorText)
-                throw new Error(`AI processing failed: ${aiResponse.status}`)
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.details || 'AI processing failed')
             }
 
-            const aiData = await aiResponse.json()
-            console.log('✅ AI response:', aiData)
-            const taskData = aiData.task
+            const { task: aiTask } = await response.json()
 
-            // Create task in database
-            console.log('Creating task in Supabase...')
-            console.log('Task data to insert:', {
+            // Create a new object for insertion with only the valid columns
+            const taskToInsert = {
+                title: aiTask.title,
+                description: aiTask.description,
+                priority: aiTask.priority,
+                due_date: aiTask.due_date,
+                status: 'pending', // Set a default status
                 user_id: user.id,
-                title: taskData.title,
-                description: taskData.description,
-                status: 'pending',
-                priority: taskData.priority,
-                due_date: taskData.due_date,
-                source: 'ai_generated',
-                ai_context: JSON.stringify(taskData)
-            })
+                source,
+            };
 
-            const { data: newTask, error: taskError } = await supabase
+            // Save to Supabase
+            const { data: savedTask, error: dbError } = await supabase
                 .from('tasks')
-                .insert({
-                    user_id: user.id,
-                    title: taskData.title,
-                    description: taskData.description,
-                    status: 'pending',
-                    priority: taskData.priority,
-                    due_date: taskData.due_date,
-                    source: 'ai_generated',
-                    ai_context: JSON.stringify(taskData)
-                })
+                .insert(taskToInsert)
                 .select()
                 .single()
 
-            if (taskError) {
-                console.error('❌ Supabase task creation error:', taskError)
-                console.error('Error details:', {
-                    code: taskError.code,
-                    message: taskError.message,
-                    details: taskError.details,
-                    hint: taskError.hint
-                })
-                throw taskError
+            if (dbError) throw dbError
+
+            setTasks(prev => [savedTask, ...prev])
+            toast.success('Task created!', { id: toastId })
+
+            // Google Calendar Integration
+            if (aiTask.integrations.includes('google_calendar')) {
+                await createGoogleCalendarEvent(savedTask)
             }
-
-            console.log('✅ Task created successfully:', newTask)
-            console.log('=== DEBUG: Task creation completed ===')
-
-            // Show AI response to user
-            if (taskData.ai_response) {
-                toast.success(taskData.ai_response)
-            } else {
-                toast.success('Task created successfully!')
-            }
-
-            // If Google Calendar integration is suggested and due_date exists, create calendar event
-            if (taskData.integrations?.includes('google_calendar') && taskData.due_date) {
-                try {
-                    console.log('Attempting Google Calendar integration...')
-                    // Get user's Google Calendar access token
-                    const { data: integration, error: integrationError } = await supabase
-                        .from('integrations')
-                        .select('access_token')
-                        .eq('user_id', user.id)
-                        .eq('platform', 'google_calendar')
-                        .eq('is_active', true)
-                        .single()
-
-                    if (integrationError) {
-                        console.error('Integration fetch error:', integrationError)
-                        toast('Task created! Connect Google Calendar for automatic scheduling')
-                        return
-                    }
-
-                    if (integration?.access_token) {
-                        const calendarResponse = await fetch('/api/integrations/google-calendar', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                task: {
-                                    id: newTask.id,
-                                    title: taskData.title,
-                                    description: taskData.description,
-                                    due_date: taskData.due_date,
-                                    priority: taskData.priority
-                                },
-                                accessToken: integration.access_token
-                            })
-                        })
-
-                        if (calendarResponse.ok) {
-                            const calendarData = await calendarResponse.json()
-
-                            // Update task with calendar event ID
-                            await supabase
-                                .from('tasks')
-                                .update({
-                                    external_id: calendarData.event.id,
-                                    external_platform: 'google_calendar'
-                                })
-                                .eq('id', newTask.id)
-
-                            toast.success('✅ Task created and added to Google Calendar!')
-                        } else {
-                            const errorData = await calendarResponse.json()
-                            console.error('Calendar API error:', errorData)
-                            toast('Task created! (Calendar integration failed)')
-                        }
-                    } else {
-                        toast('Task created! Connect Google Calendar for automatic scheduling')
-                        return
-                    }
-                } catch (calendarError) {
-                    console.error('Calendar integration error:', calendarError)
-                                            toast('Task created! (Calendar integration failed)')
-                }
-            }
-
-            // Refresh tasks list
-            await fetchTasks()
-            reset()
-        } catch {
-            console.error('Error processing input:')
-            console.error('Full error details:', {
-                message: 'Unknown error',
-                stack: undefined,
-                user: user?.id,
-                text: text
-            })
-            toast.error('Failed to create task')
+        } catch (error: any) {
+            console.error('Error processing task:', error)
+            toast.error(`Error: ${error.message}`, { id: toastId })
         } finally {
             setIsProcessing(false)
         }
     }
 
-    const onSubmit = async (data: InputForm) => {
-        await processTextInput(data.text)
-    }
+    const createGoogleCalendarEvent = async (task: Task) => {
+        if (!session || !session.provider_token) {
+            toast.error('Please connect your Google account in Settings to create calendar events.')
+            return
+        }
 
-    const deleteTask = async (taskId: string) => {
         try {
-            const { error } = await supabase
-                .from('tasks')
-                .delete()
-                .eq('id', taskId)
+            const response = await fetch('/api/google/create-event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task, session }),
+            })
 
-            if (error) throw error
+            if (!response.ok) throw new Error('Failed to create Google Calendar event')
 
-            toast.success('Task deleted successfully!')
-            await fetchTasks()
-        } catch {
-            console.error('Error deleting task:')
-            toast.error('Failed to delete task')
+            const { event } = await response.json()
+            toast.success(
+                <span>
+                    Event created in Google Calendar!{' '}
+                    <a href={event.htmlLink} target="_blank" rel="noopener noreferrer" className="underline">
+                        View Event
+                    </a>
+                </span>
+            )
+        } catch (error) {
+            console.error('Error creating calendar event:', error)
+            toast.error('Could not create Google Calendar event.')
         }
     }
 
-    const updateTaskStatus = async (taskId: string, newStatus: Task['status']) => {
+    const onFormSubmit = handleSubmit(async (data: InputForm) => {
+        await processAndSaveTask(data.text, 'text');
+        reset();
+    });
+
+    const deleteTask = async (taskId: string, externalId?: string) => {
         try {
-            const { error } = await supabase
-                .from('tasks')
+            // If there's a Google Calendar event, delete it first
+            if (externalId) {
+                await deleteGoogleCalendarEvent(externalId);
+            }
+
+            const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+
+            if (error) throw error;
+
+            toast.success("Task deleted successfully!");
+            setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId)); // Update state locally
+        } catch (error: any) {
+            console.error("Error deleting task:", error);
+            toast.error(`Failed to delete task: ${error.message}`);
+        }
+    };
+
+    const updateTaskStatus = async (
+        taskId: string,
+        newStatus: Task["status"],
+        externalId?: string
+    ) => {
+        try {
+            // If there's a Google Calendar event, update it
+            if (externalId) {
+                await updateGoogleCalendarEvent(externalId, newStatus);
+            }
+
+            const { data, error } = await supabase
+                .from("tasks")
                 .update({ status: newStatus })
-                .eq('id', taskId)
+                .eq("id", taskId)
+                .select()
+                .single();
 
-            if (error) throw error
+            if (error) throw error;
 
-            toast.success('Task updated successfully!')
-            await fetchTasks()
-        } catch {
-            console.error('Error updating task:')
-            toast.error('Failed to update task')
+            toast.success("Task updated successfully!");
+            setTasks(prevTasks => prevTasks.map(t => t.id === taskId ? data : t)); // Update state locally
+        } catch (error: any) {
+            console.error("Error updating task:", error);
+            toast.error(`Failed to update task: ${error.message}`);
         }
-    }
+    };
+
+    const updateGoogleCalendarEvent = async (eventId: string, status: Task["status"]) => {
+        if (!session || !session.provider_token) return;
+
+        try {
+            await fetch('/api/google/update-event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ eventId, status, session }),
+            });
+        } catch (error) {
+            console.error("Could not update Google Calendar event:", error);
+            // We don't show a toast here to avoid spamming the user
+        }
+    };
+
+    const deleteGoogleCalendarEvent = async (eventId: string) => {
+        if (!session || !session.provider_token) return;
+
+        try {
+            await fetch('/api/google/delete-event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ eventId, session }),
+            });
+        } catch (error) {
+            console.error("Could not delete Google Calendar event:", error);
+        }
+    };
 
     const getPriorityColor = (priority: string) => {
         switch (priority) {
-            case 'urgent': return 'text-red-500'
-            case 'high': return 'text-orange-500'
-            case 'medium': return 'text-yellow-500'
-            case 'low': return 'text-green-500'
-            default: return 'text-gray-500'
+            case "urgent":
+                return "text-red-500";
+            case "high":
+                return "text-orange-500";
+            case "medium":
+                return "text-yellow-500";
+            case "low":
+                return "text-green-500";
+            default:
+                return "text-gray-500";
         }
-    }
+    };
 
     const getStatusIcon = (status: string) => {
         switch (status) {
-            case 'completed': return <CheckCircle className="w-4 h-4 text-green-500" />
-            case 'in_progress': return <Clock className="w-4 h-4 text-blue-500" />
-            case 'cancelled': return <AlertCircle className="w-4 h-4 text-red-500" />
-            default: return <Clock className="w-4 h-4 text-gray-500" />
+            case "completed":
+                return <CheckCircle className="w-4 h-4 text-green-500" />;
+            case "in_progress":
+                return <Clock className="w-4 h-4 text-blue-500" />;
+            case "cancelled":
+                return <AlertCircle className="w-4 h-4 text-red-500" />;
+            default:
+                return <Clock className="w-4 h-4 text-gray-500" />;
         }
-    }
+    };
 
     if (!user) {
         return (
             <div className="max-w-4xl mx-auto text-center py-12">
-                <h2 className="text-2xl font-semibold mb-4">Please sign in to use Talk2Task</h2>
-                <p className="text-muted">You need to be authenticated to create and manage tasks.</p>
+                <h2 className="text-2xl font-semibold mb-4">
+                    Please sign in to use Talk2Task
+                </h2>
+                <p className="text-muted">
+                    You need to be authenticated to create and manage tasks.
+                </p>
             </div>
-        )
+        );
     }
 
     return (
@@ -426,11 +407,9 @@ export default function Talk2TaskInterface() {
                     Talk2Task
                 </h1>
                 <p className="text-lg text-muted max-w-2xl mx-auto">
-                    Transform your voice and text into actionable tasks with AI-powered intelligence.
-                    Simply speak or type, and let AI handle the rest.
+                    Transform your voice and text into actionable tasks with AI-powered
+                    intelligence. Simply speak or type, and let AI handle the rest.
                 </p>
-
-              
             </motion.div>
 
             {/* Input Interface */}
@@ -446,8 +425,8 @@ export default function Talk2TaskInterface() {
                         onClick={isListening ? stopListening : startListening}
                         disabled={isProcessing}
                         className={`flex-1 flex items-center justify-center gap-3 px-6 py-4 rounded-xl font-medium transition-all duration-200 ${isListening
-                            ? 'bg-red-500 text-white shadow-lg scale-105'
-                            : 'bg-accent text-accent-foreground hover:bg-accent/90 hover:scale-105'
+                            ? "bg-red-500 text-white shadow-lg scale-105"
+                            : "bg-accent text-accent-foreground hover:bg-accent/90 hover:scale-105"
                             } disabled:opacity-50 disabled:cursor-not-allowed`}
                     >
                         {isListening ? (
@@ -464,9 +443,9 @@ export default function Talk2TaskInterface() {
                     </button>
 
                     {/* Text Input */}
-                    <form onSubmit={handleSubmit(onSubmit)} className="flex-1 flex gap-2">
+                    <form onSubmit={onFormSubmit} className="flex-1 flex gap-2">
                         <input
-                            {...register('text')}
+                            {...register("text")}
                             placeholder="Type your task here..."
                             className="flex-1 px-4 py-4 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
                             disabled={isProcessing}
@@ -494,7 +473,7 @@ export default function Talk2TaskInterface() {
                     {isProcessing && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
+                            animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
                             className="flex items-center justify-center gap-3 py-4 text-muted"
                         >
@@ -503,6 +482,16 @@ export default function Talk2TaskInterface() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+            </motion.div>
+
+            {/* User Guidance */}
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6 }}
+                className="text-center text-sm text-muted"
+            >
+                <p>Try saying: "Schedule a team meeting for tomorrow at 3pm" or "Add a task to buy milk"</p>
             </motion.div>
 
             {/* Tasks Section */}
@@ -520,9 +509,8 @@ export default function Talk2TaskInterface() {
                             onClick={() => setShowTasks(!showTasks)}
                             className="text-accent hover:text-accent/80 transition-colors"
                         >
-                            {showTasks ? 'Hide' : 'Show'} Tasks
+                            {showTasks ? "Hide" : "Show"} Tasks
                         </button>
-                        
                     </div>
                 </div>
 
@@ -530,13 +518,15 @@ export default function Talk2TaskInterface() {
                     {showTasks && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
+                            animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
                             className="space-y-4"
                         >
                             {tasks.length === 0 ? (
                                 <p className="text-center text-muted py-8">
-                                    {isLoading ? 'Loading tasks...' : 'No tasks yet. Create your first task above!'}
+                                    {isLoading
+                                        ? "Loading tasks..."
+                                        : "No tasks yet. Create your first task above!"}
                                 </p>
                             ) : (
                                 tasks.map((task) => (
@@ -551,22 +541,32 @@ export default function Talk2TaskInterface() {
                                                 <div className="flex items-center gap-3 mb-2">
                                                     {getStatusIcon(task.status)}
                                                     <h3 className="font-medium">{task.title}</h3>
-                                                    <span className={`text-xs px-2 py-1 rounded-full bg-accent/10 text-accent ${getPriorityColor(task.priority)}`}>
+                                                    <span
+                                                        className={`text-xs px-2 py-1 rounded-full bg-accent/10 text-accent ${getPriorityColor(
+                                                            task.priority
+                                                        )}`}
+                                                    >
                                                         {task.priority}
                                                     </span>
                                                     {task.external_platform && (
                                                         <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
-                                                            {task.external_platform === 'google_calendar' ? '📅 Calendar' : task.external_platform}
+                                                            {task.external_platform === "google_calendar"
+                                                                ? "📅 Calendar"
+                                                                : task.external_platform}
                                                         </span>
                                                     )}
                                                 </div>
                                                 {task.description && (
-                                                    <p className="text-sm text-muted mb-2">{task.description}</p>
+                                                    <p className="text-sm text-muted mb-2">
+                                                        {task.description}
+                                                    </p>
                                                 )}
                                                 <div className="flex items-center gap-4 text-xs text-muted">
                                                     <span className="flex items-center gap-1">
                                                         <Calendar className="w-3 h-3" />
-                                                        {task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No due date'}
+                                                        {task.due_date
+                                                            ? new Date(task.due_date).toLocaleDateString()
+                                                            : "No due date"}
                                                     </span>
                                                     <span className="capitalize">{task.source}</span>
                                                 </div>
@@ -574,7 +574,13 @@ export default function Talk2TaskInterface() {
                                             <div className="flex items-center gap-2">
                                                 <select
                                                     value={task.status}
-                                                    onChange={(e) => updateTaskStatus(task.id, e.target.value as Task['status'])}
+                                                    onChange={(e) =>
+                                                        updateTaskStatus(
+                                                            task.id,
+                                                            e.target.value as Task["status"],
+                                                            task.external_id
+                                                        )
+                                                    }
                                                     className="text-xs px-2 py-1 rounded border border-border bg-background"
                                                 >
                                                     <option value="pending">Pending</option>
@@ -583,7 +589,7 @@ export default function Talk2TaskInterface() {
                                                     <option value="cancelled">Cancelled</option>
                                                 </select>
                                                 <button
-                                                    onClick={() => deleteTask(task.id)}
+                                                    onClick={() => deleteTask(task.id, task.external_id)}
                                                     className="text-red-500 hover:text-red-700 transition-colors"
                                                     title="Delete task"
                                                 >
@@ -599,8 +605,6 @@ export default function Talk2TaskInterface() {
                 </AnimatePresence>
             </motion.div>
 
-          
-
             {/* Features Preview */}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -611,19 +615,22 @@ export default function Talk2TaskInterface() {
                 {[
                     {
                         icon: <Mic className="w-8 h-8" />,
-                        title: 'Voice Input',
-                        description: 'Speak naturally and let AI convert your words into structured tasks'
+                        title: "Voice Input",
+                        description:
+                            "Speak naturally and let AI convert your words into structured tasks",
                     },
                     {
                         icon: <Calendar className="w-8 h-8" />,
-                        title: 'Smart Scheduling',
-                        description: 'AI automatically suggests optimal times and creates calendar events'
+                        title: "Smart Scheduling",
+                        description:
+                            "AI automatically suggests optimal times and creates calendar events",
                     },
                     {
                         icon: <CheckCircle className="w-8 h-8" />,
-                        title: 'Multi-Platform Sync',
-                        description: 'Seamlessly integrate with Google Calendar, Notion, Trello, and Slack'
-                    }
+                        title: "Multi-Platform Sync",
+                        description:
+                            "Seamlessly integrate with Google Calendar, Notion, Trello, and Slack",
+                    },
                 ].map((feature, index) => (
                     <motion.div
                         key={index}
@@ -632,12 +639,14 @@ export default function Talk2TaskInterface() {
                         transition={{ delay: 0.9 + index * 0.1 }}
                         className="bg-surface rounded-xl p-6 text-center border border-border hover:border-accent/50 transition-colors"
                     >
-                        <div className="text-accent mb-4 flex justify-center">{feature.icon}</div>
+                        <div className="text-accent mb-4 flex justify-center">
+                            {feature.icon}
+                        </div>
                         <h3 className="font-semibold mb-2">{feature.title}</h3>
                         <p className="text-sm text-muted">{feature.description}</p>
                     </motion.div>
                 ))}
             </motion.div>
         </div>
-    )
+    );
 }

@@ -33,35 +33,34 @@ export default function AuthCallback() {
     }
 
     const saveIntegration = async (session: any) => {
-      // const googleToken = session?.provider_token
-      // const refreshToken = session?.provider_refresh_token
-      // const expiresAt = session?.expires_at
-      //   ? new Date(session.expires_at * 1000).toISOString()
-      //   : null
+      const googleToken = session?.provider_token
+      const refreshToken = session?.provider_refresh_token
+      const expiresAt = session?.expires_at
+        ? new Date(session.expires_at * 1000).toISOString()
+        : null
 
-      // if (!googleToken) return
+      if (!googleToken) return
 
-      // // ✅ Save integration in Supabase
-      // const { error: insertError } = await supabase.from('integrations').upsert(
-      //   {
-      //     user_id: session.user.id,
-      //     platform: 'google_calendar',
-      //     access_token: googleToken,
-      //     refresh_token: refreshToken,
-      //     expires_at: expiresAt,
-      //     is_active: true,
-      //     updated_at: new Date().toISOString(),
-      //   },
-      // )
+      // ✅ Save integration in Supabase
+      const { error: insertError } = await supabase.from('integrations').upsert(
+        {
+          user_id: session.user.id,
+          platform: 'google_calendar',
+          access_token: googleToken,
+          refresh_token: refreshToken,
+          expires_at: expiresAt,
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        },
+      )
 
-      // if (insertError) {
-      //   console.error('❌ Failed to save Google integration:', insertError)
-      // } else {
-      //   console.log('✅ Google integration saved for user:', session.user.id)
-      // }
+      if (insertError) {
+        console.error('❌ Failed to save Google integration:', insertError)
+      } else {
+        console.log('✅ Google integration saved for user:', session.user.id)
+      }
 
-      // Optionally fetch events immediately
-      // await fetchGoogleCalendarEvents(googleToken)
+      await fetchGoogleCalendarEvents(googleToken)
     }
 
     // 🔄 Auth state listener

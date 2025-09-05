@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const getSession = async () => {
       const { data, error } = await supabase.auth.getSession()
-      console.log(data , ' User is login')
+      console.log(data, ' User is login')
       if (data?.session) {
         setSession(data.session)
         setUser(data.session.user)
@@ -61,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             access_type: 'offline',
             prompt: 'consent',
           },
-          //  scopes: 'openid email profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+          scopes: 'openid email profile https://www.googleapis.com/auth/calendar',
         },
       })
 
