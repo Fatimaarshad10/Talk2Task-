@@ -2,7 +2,25 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { BarChart3, TrendingUp, Clock, CheckCircle, AlertCircle, Calendar, Target } from 'lucide-react'
+import { BarChart3, TrendingUp, Clock, CheckCircle, AlertCircle, Calendar, Target, Loader2 } from 'lucide-react'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useAuth } from '../contexts/AuthContext'
+import toast from 'react-hot-toast'
+
+interface Task {
+    id: string;
+    title: string;
+    description: string | null;
+    status: "pending" | "in_progress" | "completed" | "cancelled";
+    priority: "low" | "medium" | "high" | "urgent";
+    due_date: string | null;
+    source: "voice" | "text" | "ai_generated";
+    created_at: string;
+    updated_at: string; // Assuming this field exists for completion time calculation
+    external_id?: string;
+    external_platform?: string;
+}
+
 
 interface TaskStats {
     total: number
@@ -25,6 +43,8 @@ interface ProductivityMetrics {
 }
 
 export default function AnalyticsDashboard() {
+    const [tasks, setTasks] = useState<Task[]>([])
+    const [isLoading, setIsLoading] = useState(true)
     const [taskStats, setTaskStats] = useState<TaskStats>({
         total: 0,
         completed: 0,
@@ -45,28 +65,83 @@ export default function AnalyticsDashboard() {
         }
     })
 
-    useEffect(() => {
-        // Mock data for demo
-        setTaskStats({
-            total: 24,
-            completed: 18,
-            pending: 4,
-            in_progress: 2,
-            cancelled: 0
-        })
+    const supabase = createClientComponentClient()
+    const { user } = useAuth()
 
-        setProductivityMetrics({
-            completionRate: 75,
-            averageCompletionTime: 2.3,
-            tasksPerDay: 3.2,
-            priorityDistribution: {
-                urgent: 2,
-                high: 8,
-                medium: 12,
-                low: 2
+    useEffect(() => {
+        const fetchTasks = async () => {
+            if (!user) {
+                setIsLoading(false)
+                return
             }
-        })
-    }, [])
+
+            try {
+                setIsLoading(true)
+                const { data, error } = await supabase
+                    .from('tasks')
+                    .select('*')
+                    .eq('user_id', user.id)
+
+                if (error) throw error
+
+                setTasks(data || [])
+            } catch (error: any) {
+                console.error("Error fetching tasks:", error)
+                toast.error("Failed to load analytics data.")
+            } finally {
+                setIsLoading(false)
+            }
+        }
+
+        fetchTasks()
+    }, [user, supabase])
+
+    useEffect(() => {
+        if (tasks.length > 0) {
+            // Calculate Task Stats
+            const stats: TaskStats = {
+                total: tasks.length,
+                completed: tasks.filter(t => t.status === 'completed').length,
+                pending: tasks.filter(t => t.status === 'pending').length,
+                in_progress: tasks.filter(t => t.status === 'in_progress').length,
+                cancelled: tasks.filter(t => t.status === 'cancelled').length,
+            }
+            setTaskStats(stats)
+
+            // Calculate Productivity Metrics
+            const completionRate = stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0
+
+            const completedTasks = tasks.filter(t => t.status === 'completed' && t.updated_at)
+            const totalCompletionTime = completedTasks.reduce((acc, task) => {
+                const created = new Date(task.created_at).getTime()
+                const updated = new Date(task.updated_at).getTime()
+                return acc + (updated - created)
+            }, 0)
+            const averageCompletionTime = completedTasks.length > 0
+                ? parseFloat((totalCompletionTime / completedTasks.length / (1000 * 60 * 60 * 24)).toFixed(1)) // in days
+                : 0
+
+            const firstTaskDate = tasks.reduce((earliest, task) => {
+                const taskDate = new Date(task.created_at)
+                return taskDate < earliest ? taskDate : earliest
+            }, new Date())
+            const daysActive = Math.max(1, (new Date().getTime() - firstTaskDate.getTime()) / (1000 * 60 * 60 * 24))
+            const tasksPerDay = parseFloat((stats.total / daysActive).toFixed(1))
+
+            const priorityDistribution = tasks.reduce((acc, task) => {
+                acc[task.priority] = (acc[task.priority] || 0) + 1
+                return acc
+            }, { urgent: 0, high: 0, medium: 0, low: 0 })
+
+
+            setProductivityMetrics({
+                completionRate,
+                averageCompletionTime,
+                tasksPerDay,
+                priorityDistribution,
+            })
+        }
+    }, [tasks])
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -86,6 +161,41 @@ export default function AnalyticsDashboard() {
             case 'low': return 'text-green-600'
             default: return 'text-gray-600'
         }
+    }
+
+    if (isLoading) {
+        return (
+            <div className="flex justify-center items-center h-64">
+                <Loader2 className="w-8 h-8 animate-spin text-accent" />
+                <p className="ml-4 text-lg text-muted">Loading Analytics...</p>
+            </div>
+        )
+    }
+
+    if (!user) {
+        return (
+            <div className="text-center py-12">
+                <h2 className="text-2xl font-semibold mb-4">
+                    Please sign in to view your analytics.
+                </h2>
+                <p className="text-muted">
+                    Your productivity data is waiting for you.
+                </p>
+            </div>
+        )
+    }
+
+    if (tasks.length === 0) {
+        return (
+            <div className="text-center py-12">
+                <h2 className="text-2xl font-semibold mb-4">
+                    No Task Data Available
+                </h2>
+                <p className="text-muted">
+                    Create some tasks to start seeing your analytics.
+                </p>
+            </div>
+        )
     }
 
     return (

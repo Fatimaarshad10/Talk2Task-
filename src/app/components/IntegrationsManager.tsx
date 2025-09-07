@@ -12,6 +12,7 @@ interface Integration {
   platform: 'google_calendar' | 'notion' | 'trello' | 'slack'
   is_active: boolean
   connected_at?: string
+  workspace_name?: string
 }
 
 const platforms = [
@@ -82,32 +83,61 @@ export default function IntegrationsManager() {
     fetchIntegrations()
   }, [supabase, user])
 
-  // ✅ Connect Google Calendar
+  // ✅ Check for Notion OAuth success/error on component mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const success = urlParams.get('success')
+    const error = urlParams.get('error')
+
+    if (success === 'notion_connected') {
+      toast.success('Notion connected successfully!')
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (error) {
+      if (error === 'notion_oauth_failed') {
+        toast.error('Failed to connect to Notion')
+      } else if (error === 'notion_config_missing') {
+        toast.error('Notion integration not configured. Please check your environment variables.')
+      } else if (error === 'notion_token_exchange_failed') {
+        toast.error('Failed to get Notion access token')
+      }
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  // ✅ Connect platform (Google Calendar or Notion)
   const connectPlatform = async (platform: string) => {
-    if (platform !== 'google_calendar') {
-      toast.error('Only Google Calendar is implemented for now')
+    if (platform !== 'google_calendar' && platform !== 'notion') {
+      toast.error('Only Google Calendar and Notion are implemented')
       return
     }
 
     setIsConnecting(platform)
 
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-            scope:
-              'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email'
+      if (platform === 'google_calendar') {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: `${window.location.origin}/auth/callback`,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+              scope:
+                'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email'
+            }
           }
-        }
-      })
+        })
 
-      if (error) {
-        toast.error('Failed to connect Google Calendar')
-        console.error(error)
+        if (error) {
+          toast.error('Failed to connect Google Calendar')
+          console.error(error)
+        }
+      } else if (platform === 'notion') {
+        // Redirect to Notion OAuth flow
+        window.location.href = '/api/notion/auth'
+        return // Don't set isConnecting to null since we're redirecting
       }
       // ⬆️ Supabase will redirect → after callback we insert into DB
     } finally {
@@ -115,9 +145,18 @@ export default function IntegrationsManager() {
     }
   }
 
-  // ✅ Disconnect by deleting from Supabase integrations
+  // ✅ Disconnect by deleting from Supabase integrations or clearing cookies
   const disconnectPlatform = async (platform: string) => {
     try {
+      if (platform === 'notion') {
+        // For Notion, clear the cookies
+        document.cookie = 'notion_access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+        document.cookie = 'notion_workspace_name=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+        toast.success('Notion disconnected successfully')
+        return
+      }
+
+      // For other platforms, delete from database
       const { error } = await supabase
         .from('integrations')
         .delete()
@@ -137,11 +176,46 @@ export default function IntegrationsManager() {
     }
   }
 
-  const isConnected = (platform: string) =>
-    integrations.some((i) => i.platform === platform && i.is_active)
+  const isConnected = (platform: string) => {
+    // For Notion, also check for access token cookie
+    if (platform === 'notion') {
+      const getCookie = (name: string) => {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop()?.split(';').shift();
+        return null;
+      };
 
-  const getIntegration = (platform: string) =>
-    integrations.find((i) => i.platform === platform)
+      const notionToken = getCookie('notion_access_token');
+      return !!notionToken || integrations.some((i) => i.platform === platform && i.is_active)
+    }
+
+    // For other platforms, only check database
+    return integrations.some((i) => i.platform === platform && i.is_active)
+  }
+
+  const getIntegration = (platform: string) => {
+    const dbIntegration = integrations.find((i) => i.platform === platform)
+
+    // For Notion, if we have a token but no DB entry, create a virtual integration
+    if (platform === 'notion' && !dbIntegration && document.cookie.includes('notion_access_token')) {
+      // Try to get workspace name from cookie
+      const workspaceName = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('notion_workspace_name='))
+        ?.split('=')[1]
+
+      return {
+        id: 'notion-virtual',
+        platform: 'notion',
+        is_active: true,
+        connected_at: new Date().toISOString(), // Use current time as fallback
+        workspace_name: workspaceName
+      }
+    }
+
+    return dbIntegration
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -197,6 +271,11 @@ export default function IntegrationsManager() {
                 <div className="text-sm text-muted mb-4">
                   Connected since{' '}
                   {new Date(integration.connected_at).toLocaleDateString()}
+                  {integration.workspace_name && (
+                    <div className="text-xs mt-1">
+                      Workspace: {decodeURIComponent(integration.workspace_name)}
+                    </div>
+                  )}
                 </div>
               )}
 

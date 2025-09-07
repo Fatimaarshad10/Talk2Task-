@@ -45,6 +45,7 @@ export default function Talk2TaskInterface() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [showTasks, setShowTasks] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [inputSource, setInputSource] = useState<'voice' | 'text'>('text');
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const supabase = createClientComponentClient();
@@ -54,10 +55,13 @@ export default function Talk2TaskInterface() {
         register,
         handleSubmit,
         reset,
+        setValue,
         formState: { errors },
     } = useForm<InputForm>({
         resolver: zodResolver(inputSchema),
     });
+
+    const textRegister = register('text');
 
     // Fetch tasks from database
     const fetchTasks = async () => {
@@ -68,8 +72,6 @@ export default function Talk2TaskInterface() {
 
         try {
             setIsLoading(true);
-            console.log("Fetching tasks for user:", user.id);
-
             const { data, error } = await supabase
                 .from("tasks")
                 .select("*")
@@ -83,14 +85,12 @@ export default function Talk2TaskInterface() {
 
             if (!data || data.length === 0) {
                 console.log("No tasks found for user:", user.id);
-                // 👇 don’t set tasks or show error, just return
+                setTasks([]); // Ensure tasks are cleared if there are none
                 return;
             }
 
-            console.log("Tasks fetched successfully:", data.length, "tasks");
             setTasks(data);
         } catch {
-            console.error("Error fetching tasks:");
             toast.error("Failed to fetch tasks");
         } finally {
             setIsLoading(false);
@@ -102,7 +102,10 @@ export default function Talk2TaskInterface() {
         if (user) {
             fetchTasks()
         }
-    }, [user]); const startListening = async () => {
+    }, [user]);
+
+
+    const startListening = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const mediaRecorder = new MediaRecorder(stream);
@@ -141,8 +144,6 @@ export default function Talk2TaskInterface() {
         setIsProcessing(true);
 
         try {
-            const arrayBuffer = await audioBlob.arrayBuffer();
-
             if (
                 "webkitSpeechRecognition" in window ||
                 "SpeechRecognition" in window
@@ -158,7 +159,8 @@ export default function Talk2TaskInterface() {
                 recognition.onresult = async (event) => {
                     const transcript = event.results[0][0].transcript;
                     console.log("Voice transcript:", transcript);
-                    await processAndSaveTask(transcript, 'voice');
+                    setValue('text', transcript);
+                    setInputSource('voice');
                 };
 
                 recognition.onerror = (event) => {
@@ -195,10 +197,11 @@ export default function Talk2TaskInterface() {
         const toastId = toast.loading('AI is processing your task...')
 
         try {
+            const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
             const response = await fetch('/api/ai/process', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text }),
+                body: JSON.stringify({ text, timezone: userTimezone }),
             })
 
             if (!response.ok) {
@@ -235,6 +238,11 @@ export default function Talk2TaskInterface() {
             if (aiTask.integrations.includes('google_calendar')) {
                 await createGoogleCalendarEvent(savedTask)
             }
+
+            // Notion Integration
+            if (aiTask.integrations.includes('notion')) {
+                await createNotionPage(savedTask)
+            }
         } catch (error: any) {
             console.error('Error processing task:', error)
             toast.error(`Error: ${error.message}`, { id: toastId })
@@ -259,6 +267,30 @@ export default function Talk2TaskInterface() {
             if (!response.ok) throw new Error('Failed to create Google Calendar event')
 
             const { event } = await response.json()
+
+            // Update the task with the external_id and external_platform
+            const { error: updateError } = await supabase
+                .from('tasks')
+                .update({
+                    external_id: event.id,
+                    external_platform: 'google_calendar'
+                })
+                .eq('id', task.id);
+
+            if (updateError) {
+                console.error("Error updating task with external_id:", updateError);
+                toast.error("Failed to link task to Google Calendar event.");
+            } else {
+                // Also update the local state to reflect the change
+                setTasks(prevTasks =>
+                    prevTasks.map(t =>
+                        t.id === task.id
+                            ? { ...t, external_id: event.id, external_platform: 'google_calendar' }
+                            : t
+                    )
+                );
+            }
+
             toast.success(
                 <span>
                     Event created in Google Calendar!{' '}
@@ -274,15 +306,20 @@ export default function Talk2TaskInterface() {
     }
 
     const onFormSubmit = handleSubmit(async (data: InputForm) => {
-        await processAndSaveTask(data.text, 'text');
+        await processAndSaveTask(data.text, inputSource);
         reset();
+        setInputSource('text');
     });
 
-    const deleteTask = async (taskId: string, externalId?: string) => {
+    const deleteTask = async (taskId: string, externalId?: string, externalPlatform?: string) => {
         try {
-            // If there's a Google Calendar event, delete it first
-            if (externalId) {
-                await deleteGoogleCalendarEvent(externalId);
+            // If there's an external integration, delete it first
+            if (externalId && externalPlatform) {
+                if (externalPlatform === 'google_calendar') {
+                    await deleteGoogleCalendarEvent(externalId);
+                } else if (externalPlatform === 'notion') {
+                    await deleteNotionPage(externalId);
+                }
             }
 
             const { error } = await supabase.from("tasks").delete().eq("id", taskId);
@@ -300,12 +337,17 @@ export default function Talk2TaskInterface() {
     const updateTaskStatus = async (
         taskId: string,
         newStatus: Task["status"],
-        externalId?: string
+        externalId?: string,
+        externalPlatform?: string
     ) => {
         try {
-            // If there's a Google Calendar event, update it
-            if (externalId) {
-                await updateGoogleCalendarEvent(externalId, newStatus);
+            // If there's an external integration, update it
+            if (externalId && externalPlatform) {
+                if (externalPlatform === 'google_calendar') {
+                    await updateGoogleCalendarEvent(externalId, newStatus);
+                } else if (externalPlatform === 'notion') {
+                    await updateNotionPage(externalId, newStatus);
+                }
             }
 
             const { data, error } = await supabase
@@ -351,6 +393,129 @@ export default function Talk2TaskInterface() {
             });
         } catch (error) {
             console.error("Could not delete Google Calendar event:", error);
+        }
+    };
+
+    const createNotionPage = async (task: Task) => {
+        // Check if Notion is connected by looking for the access token cookie
+        const getCookie = (name: string) => {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop()?.split(';').shift();
+            return null;
+        };
+
+        const notionToken = getCookie('notion_access_token');
+
+        if (!notionToken) {
+            toast.error('Please connect your Notion account in Settings to create pages.')
+            return
+        }
+
+        // For now, we'll use a default database ID. In a real implementation,
+        // you'd want to let users select their database
+        const databaseId = process.env.NEXT_PUBLIC_NOTION_DATABASE_ID;
+
+        console.log('Creating Notion page with database ID:', databaseId);
+
+        if (!databaseId || databaseId === 'YOUR_ACTUAL_DATABASE_ID_HERE') {
+            toast.error('Notion database not configured. Please set your actual database ID in .env.local')
+            return
+        }
+
+        try {
+            const response = await fetch('/api/notion/create-page', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task, databaseId }),
+            })
+
+            if (!response.ok) {
+                const errorData = await response.json()
+                throw new Error(errorData.error || 'Failed to create Notion page')
+            }
+
+            const { page } = await response.json()
+
+            // Update the task with the external_id and external_platform
+            const { error: updateError } = await supabase
+                .from('tasks')
+                .update({
+                    external_id: page.id,
+                    external_platform: 'notion'
+                })
+                .eq('id', task.id);
+
+            if (updateError) {
+                console.error("Error updating task with external_id:", updateError);
+                toast.error("Failed to link task to Notion page.");
+            } else {
+                // Also update the local state to reflect the change
+                setTasks(prevTasks =>
+                    prevTasks.map(t =>
+                        t.id === task.id
+                            ? { ...t, external_id: page.id, external_platform: 'notion' }
+                            : t
+                    )
+                );
+            }
+
+            toast.success(
+                <span>
+                    Page created in Notion!{' '}
+                    <a href={page.url} target="_blank" rel="noopener noreferrer" className="underline">
+                        View Page
+                    </a>
+                </span>
+            )
+        } catch (error) {
+            console.error('Error creating Notion page:', error)
+            toast.error('Could not create Notion page.')
+        }
+    }
+
+    const updateNotionPage = async (pageId: string, status: Task["status"]) => {
+        const getCookie = (name: string) => {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop()?.split(';').shift();
+            return null;
+        };
+
+        const notionToken = getCookie('notion_access_token');
+        if (!notionToken) return;
+
+        try {
+            await fetch('/api/notion/update-page', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pageId, status }),
+            });
+        } catch (error) {
+            console.error("Could not update Notion page:", error);
+            // We don't show a toast here to avoid spamming the user
+        }
+    };
+
+    const deleteNotionPage = async (pageId: string) => {
+        const getCookie = (name: string) => {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop()?.split(';').shift();
+            return null;
+        };
+
+        const notionToken = getCookie('notion_access_token');
+        if (!notionToken) return;
+
+        try {
+            await fetch('/api/notion/delete-page', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pageId }),
+            });
+        } catch (error) {
+            console.error("Could not delete Notion page:", error);
         }
     };
 
@@ -417,43 +582,43 @@ export default function Talk2TaskInterface() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="bg-surface rounded-2xl p-8 shadow-lg border border-border"
+                className="bg-surface rounded-2xl p-6 sm:p-8 shadow-lg border border-border"
             >
-                <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                    {/* Voice Input */}
-                    <button
-                        onClick={isListening ? stopListening : startListening}
+                <form onSubmit={onFormSubmit} className="relative">
+                    <textarea
+                        {...textRegister}
+                        onChange={(e) => {
+                            textRegister.onChange(e);
+                            if (inputSource === 'voice') {
+                                setInputSource('text');
+                            }
+                        }}
+                        placeholder="Type or say your task... e.g., 'Schedule a team meeting for tomorrow at 3pm'"
+                        className="w-full p-4 pr-24 sm:pr-28 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all duration-200 resize-none overflow-hidden"
+                        rows={2}
                         disabled={isProcessing}
-                        className={`flex-1 flex items-center justify-center gap-3 px-6 py-4 rounded-xl font-medium transition-all duration-200 ${isListening
-                            ? "bg-red-500 text-white shadow-lg scale-105"
-                            : "bg-accent text-accent-foreground hover:bg-accent/90 hover:scale-105"
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                        {isListening ? (
-                            <>
-                                <MicOff className="w-5 h-5" />
-                                Stop Recording
-                            </>
-                        ) : (
-                            <>
-                                <Mic className="w-5 h-5" />
-                                Voice Input
-                            </>
-                        )}
-                    </button>
-
-                    {/* Text Input */}
-                    <form onSubmit={onFormSubmit} className="flex-1 flex gap-2">
-                        <input
-                            {...register("text")}
-                            placeholder="Type your task here..."
-                            className="flex-1 px-4 py-4 rounded-xl border border-border bg-background focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+                        onInput={(e) => {
+                            const target = e.target as HTMLTextAreaElement;
+                            const baseScrollHeight = 56; // Approx height for 2 rows
+                            target.style.height = 'auto';
+                            target.style.height = `${Math.max(baseScrollHeight, target.scrollHeight)}px`;
+                        }}
+                    />
+                    <div className="absolute top-1/2 right-3 transform -translate-y-1/2 flex items-center gap-1 sm:gap-2">
+                        <button
+                            type="button"
+                            onClick={isListening ? stopListening : startListening}
                             disabled={isProcessing}
-                        />
+                            className={`p-2 rounded-full transition-colors duration-200 ${isListening ? 'bg-red-500 text-white' : 'text-muted-foreground hover:bg-accent/10'}`}
+                            title={isListening ? "Stop Recording" : "Start Voice Input"}
+                        >
+                            {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                        </button>
                         <button
                             type="submit"
                             disabled={isProcessing}
-                            className="px-6 py-4 bg-accent text-accent-foreground rounded-xl hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="p-2 bg-accent text-accent-foreground rounded-full hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Send Task"
                         >
                             {isProcessing ? (
                                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -461,8 +626,8 @@ export default function Talk2TaskInterface() {
                                 <Send className="w-5 h-5" />
                             )}
                         </button>
-                    </form>
-                </div>
+                    </div>
+                </form>
 
                 {errors.text && (
                     <p className="text-red-500 text-sm mt-2">{errors.text.message}</p>
@@ -475,10 +640,12 @@ export default function Talk2TaskInterface() {
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="flex items-center justify-center gap-3 py-4 text-muted"
+                            className="flex items-center justify-center gap-3 pt-4 text-muted"
                         >
                             <Loader2 className="w-5 h-5 animate-spin" />
-                            <span>AI is processing your request...</span>
+                            <span>
+                                {isListening ? 'Listening...' : 'AI is processing your request...'}
+                            </span>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -552,6 +719,8 @@ export default function Talk2TaskInterface() {
                                                         <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
                                                             {task.external_platform === "google_calendar"
                                                                 ? "📅 Calendar"
+                                                                : task.external_platform === "notion"
+                                                                ? "📝 Notion"
                                                                 : task.external_platform}
                                                         </span>
                                                     )}
@@ -578,7 +747,8 @@ export default function Talk2TaskInterface() {
                                                         updateTaskStatus(
                                                             task.id,
                                                             e.target.value as Task["status"],
-                                                            task.external_id
+                                                            task.external_id,
+                                                            task.external_platform
                                                         )
                                                     }
                                                     className="text-xs px-2 py-1 rounded border border-border bg-background"
@@ -589,7 +759,7 @@ export default function Talk2TaskInterface() {
                                                     <option value="cancelled">Cancelled</option>
                                                 </select>
                                                 <button
-                                                    onClick={() => deleteTask(task.id, task.external_id)}
+                                                    onClick={() => deleteTask(task.id, task.external_id, task.external_platform)}
                                                     className="text-red-500 hover:text-red-700 transition-colors"
                                                     title="Delete task"
                                                 >

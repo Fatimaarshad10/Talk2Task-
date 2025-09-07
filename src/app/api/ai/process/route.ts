@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 // IMPORTANT: Replace with your actual OpenRouter key, preferably from environment variables
 const OPENROUTER_API_KEY =
-  process.env.OPENROUTER_API_KEY ||
-  "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";
+  "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";
 
 export async function POST(req: NextRequest) {
   try {
-    const { text } = await req.json();
+    const { text, timezone } = await req.json();
 
     if (!text) {
       return NextResponse.json(
@@ -47,12 +46,16 @@ Here are your instructions:
 2.  **Categorize the request**: Based on keywords, classify the request into one of four categories: 'Meeting' (e.g., "schedule a call", "meet with"), 'Work' (e.g., "project deadline", "submit report"), 'Task' (e.g., "buy groceries", "remind me to"), or 'General' for anything else.
 3.  **Create a clear title**: Start the title with the category. For example, "Meeting: Team Sync" or "Task: Pick up dry cleaning".
 4.  **Handle Dates and Times**:
-    *   The current date is ${new Date().toISOString()}.
-    *   If the user provides a date and time, convert it to a full ISO 8601 string.
-    *   If the user provides only a date (e.g., "tomorrow"), use the current time on that date.
-    *   If the user provides only a time (e.g., "at 5pm"), use today's date.
+    *   The current date is ${new Date().toISOString()}. The user's timezone is ${timezone}.
+    *   When converting dates and times, always consider the user's timezone.
+    *   If the user provides a date and time, convert it to a full ISO 8601 string in UTC.
+    *   If the user provides only a date (e.g., "tomorrow"), use the current time on that date in their timezone.
+    *   If the user provides only a time (e.g., "at 5pm"), use today's date in their timezone.
     *   If no date or time is mentioned, set \`due_date\` to \`null\`.
-5.  **Google Calendar Integration**: If the text mentions a date, time, scheduling, calendar, or meeting, add 'google_calendar' to the \`integrations\` array. Otherwise, the array should be empty.
+5.  **Integration Detection**:
+    *   If the text mentions a date, time, scheduling, calendar, or meeting, add 'google_calendar' to the \`integrations\` array.
+    *   If the text mentions "notion", "workspace", "database", "page", or "notion workspace", add 'notion' to the \`integrations\` array.
+    *   The array can contain both integrations if applicable, or be empty if no integrations are detected.
 6.  **Description**: Use the user's full text as the description.
 7.  **AI Response**: Create a friendly confirmation message for the user.`,
             },

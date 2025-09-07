@@ -4,6 +4,7 @@ import { useAuth } from '@/app/contexts/AuthContext'
 import { motion } from 'framer-motion'
 import { Settings, Bell, Shield, Palette, Database } from 'lucide-react'
 import ProtectedRoute from '@/app/components/ProtectedRoute'
+import IntegrationsManager from '@/app/components/IntegrationsManager'
 
 export default function SettingsPage() {
     const { user } = useAuth()
@@ -158,11 +159,21 @@ export default function SettingsPage() {
                             </div>
                         </motion.div>
 
-                        {/* Data & Privacy */}
+                        {/* Integrations */}
                         <motion.div
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: 0.5 }}
+                            className="bg-surface rounded-2xl p-6 border border-border"
+                        >
+                            <IntegrationsManager />
+                        </motion.div>
+
+                        {/* Data & Privacy */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.6 }}
                             className="bg-surface rounded-2xl p-6 border border-border"
                         >
                             <div className="flex items-center space-x-3 mb-4">
